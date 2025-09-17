@@ -273,7 +273,7 @@ def translate_with_google(text: str, src="auto", dest="en") -> str:
 def safe_tts(text, lang):
     for i in range(3):
         try:
-            return tts_save_mp3(text, lang_code=lang)
+            return save_tts(text, lang_code=lang)
         except Exception as e:
             time.sleep(1)
     st.warning("TTS failed after 3 attempts.")
@@ -371,7 +371,7 @@ with left:
             try:
                 tts_lang = LANG_CODES.get(target_lang_name, "en")
                 if gTTS is not None and ai_translation:
-                    tts_path = tts_save_mp3(ai_translation, lang_code=tts_lang)
+                    tts_path = save_tts(ai_translation, lang_code=tts_lang)
                 else:
                     tts_path = None
             except Exception as e:
@@ -437,7 +437,7 @@ with right:
                 tts_path = None
                 try:
                     if gTTS is not None:
-                        tts_path = tts_save_mp3(translated, lang_code=LANG_CODES.get(target_lang_name, "ur"))
+                        tts_path = save_tts(translated, lang_code=LANG_CODES.get(target_lang_name, "ur"))
                 except Exception as e:
                     st.warning(f"TTS failed: {e}")
                     tts_path = None
@@ -501,7 +501,7 @@ with right:
                 tts_path = None
                 try:
                     if gTTS is not None and translated:
-                        tts_path = tts_save_mp3(translated, lang_code=LANG_CODES.get(target_lang_name, "ur"))
+                        tts_path = save_tts(translated, lang_code=LANG_CODES.get(target_lang_name, "ur"))
                 except Exception as e:
                     st.warning(f"TTS failed: {e}")
                 st.session_state.conv.append({
