@@ -46,6 +46,23 @@ try:
     from openai import OpenAI
 except Exception:
     OpenAI = None
+import shutil, subprocess, streamlit as st
+
+def check_ffmpeg():
+    ff = shutil.which("ffmpeg")
+    ffprobe = shutil.which("ffprobe")
+    if ff:
+        try:
+            out = subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True, timeout=5)
+            return True, out.stdout.splitlines()[0]
+        except Exception as e:
+            return True, f"ffmpeg present but error running it: {e}"
+    else:
+        return False, "ffmpeg not found"
+
+ff_ok, ff_status = check_ffmpeg()
+st.sidebar.markdown("**ffmpeg status:** " + ("✅ " + ff_status if ff_ok else "❌ " + ff_status))
+
 
 # -------------------------
 # Configuration & secrets
