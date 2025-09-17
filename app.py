@@ -165,12 +165,13 @@ def ai_postprocess_and_translate(raw_text: str, source_lang_name: str, target_la
         return raw_text.replace(" um ", " ").replace(" uh ", " ").strip(), ""
 
 def translate_with_google(text: str, src="auto", dest="en") -> str:
-    if not google_translator:
-        return ""
+    if not GoogleTranslator:
+        return "[Translator not installed]"
     try:
-        return google_translator.translate(text, src=src, dest=dest).text
-    except Exception:
-        return ""
+        return GoogleTranslator().translate(text, src=src, dest=dest).text
+    except Exception as e:
+        st.session_state.errors.append(f"{time.strftime('%H:%M:%S')} - Google Translate failed: {e}")
+        return f"[Translation failed: {text}]"
 
 def tts_save_mp3(text: str, lang_code: str = "en") -> str:
     if not text.strip():
@@ -270,8 +271,32 @@ with left:
                 Path("transcripts").mkdir(exist_ok=True)
                 Path(f"transcripts/{int(time.time())}_raw.txt").write_text(raw_transcript or "")
             cleaned, ai_translation = ai_postprocess_and_translate(raw_transcript or "", input_lang_name, target_lang_name)
-            if not ai_translation:
-                ai_translation = translate_with_google(cleaned or raw_transcript or "", src=LANG_CODES.get(input_lang_name), dest=LANG_CODES.get(target_lang_name, "en"))
+            # Use OpenAI if available
+if openai_client and backend_choice.startswith("OpenAI"):
+    try:
+        messages = [
+            {"role": "system", "content": "You are a clinical translator. Translate to the target language accurately, correcting medical terms."},
+            {"role": "user", "content": f"Source: {input_lang_name}\nTarget: {target_lang_name}\nText: {raw_transcript}"}
+        ]
+        resp = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages,
+            max_tokens=300,
+            temperature=0.0
+        )
+        ai_translation = resp.choices[0].message.content.strip()
+    except Exception as e:
+        st.session_state.errors.append(f"{time.strftime('%H:%M:%S')} - OpenAI translation failed: {e}")
+        ai_translation = ""
+
+        # Fallback to Google Translate
+        if not ai_translation:
+            ai_translation = translate_with_google(
+                cleaned or raw_transcript,
+                src=LANG_CODES.get(input_lang_name, "auto"),
+                dest=LANG_CODES.get(target_lang_name, "en")
+            )
+
             tts_path = tts_save_mp3(ai_translation, LANG_CODES.get(target_lang_name)) if gTTS else None
             st.session_state.conv.append({
                 "role": "Patient",
