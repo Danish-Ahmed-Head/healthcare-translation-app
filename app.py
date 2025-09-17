@@ -238,6 +238,13 @@ left, right = st.columns([1,1])
 # -------------------- Patient → Clinician --------------------
 with left:
     st.subheader("🧑 Patient → Clinician")
+
+    # Initialize variables
+    raw_transcript = ""
+    cleaned = ""
+    translated = ""
+    tts_path = None
+
     if mic_recorder:
         patient_record = mic_recorder(key="patient_rec")
         if patient_record:
@@ -245,41 +252,76 @@ with left:
             wav_bytes = extract_wav_bytes(patient_record)
             if wav_bytes:
                 tmp_wav = save_bytes_to_file(wav_bytes)
-                raw_transcript = ""
+
                 # Transcription
                 if backend_choice.startswith("OpenAI") and openai_client:
                     raw_transcript = transcribe_openai(tmp_wav, LANG_CODES.get(input_lang_name))
                 if not raw_transcript and sr:
                     raw_transcript = transcribe_google(tmp_wav, STT_LANG_CODES.get(input_lang_name))
+
+                # Store locally
                 if store_locally:
                     Path("transcripts").mkdir(exist_ok=True)
                     Path(f"transcripts/{int(time.time())}_raw.txt").write_text(raw_transcript or "")
+
                 # Translation
                 cleaned, translated = ai_translate(raw_transcript, input_lang_name, target_lang_name)
                 if not translated:
-                    translated = google_translate(cleaned or raw_transcript, src=LANG_CODES.get(input_lang_name), dest=LANG_CODES.get(target_lang_name))
+                    translated = google_translate(cleaned or raw_transcript,
+                                                  src=LANG_CODES.get(input_lang_name),
+                                                  dest=LANG_CODES.get(target_lang_name))
+
                 # TTS
                 tts_path = generate_tts(translated, LANG_CODES.get(target_lang_name))
-                st.session_state.conv.append({"role":"Patient","original":raw_transcript,"cleaned":cleaned,"translated":translated,"tts":tts_path,"ts":time.time()})
+
+                # Save to conversation
+                st.session_state.conv.append({
+                    "role": "Patient",
+                    "original": raw_transcript,
+                    "cleaned": cleaned,
+                    "translated": translated,
+                    "tts": tts_path,
+                    "ts": time.time()
+                })
+
+                # Display
                 st.info(raw_transcript)
                 st.success(translated)
+
                 try: os.remove(tmp_wav)
                 except: pass
 
 # -------------------- Clinician → Patient --------------------
 with right:
     st.subheader("👩‍⚕️ Clinician → Patient")
-    doctor_mode = st.radio("Mode", ["Type","Record"], index=0)
-    doctor_input_text = ""
-    if doctor_mode=="Type":
+
+    # Initialize variables
+    raw_transcript = ""
+    cleaned = ""
+    translated = ""
+    tts_path = None
+
+    doctor_mode = st.radio("Mode", ["Type", "Record"], index=0)
+
+    if doctor_mode == "Type":
         doctor_input_text = st.text_area("Clinician input", height=120)
         if st.button("➡ Translate & Add"):
             if doctor_input_text.strip():
-                translated = ai_translate(doctor_input_text, "English", target_lang_name)[1] if openai_client else google_translate(doctor_input_text, src="en", dest=LANG_CODES.get(target_lang_name))
+                raw_transcript = doctor_input_text
+                cleaned, translated = ai_translate(raw_transcript, "English", target_lang_name) \
+                    if openai_client else (raw_transcript, google_translate(raw_transcript, src="en", dest=LANG_CODES.get(target_lang_name)))
                 tts_path = generate_tts(translated, LANG_CODES.get(target_lang_name))
-                st.session_state.conv.append({"role":"Doctor","original":doctor_input_text,"cleaned":doctor_input_text,"translated":translated,"tts":tts_path,"ts":time.time()})
+
+                st.session_state.conv.append({
+                    "role": "Doctor",
+                    "original": raw_transcript,
+                    "cleaned": cleaned,
+                    "translated": translated,
+                    "tts": tts_path,
+                    "ts": time.time()
+                })
                 st.success("Added to conversation")
-    else:
+    else:  # Record mode
         if mic_recorder:
             doc_record = mic_recorder(key="doctor_rec")
             if doc_record:
@@ -287,12 +329,34 @@ with right:
                 wav_bytes = extract_wav_bytes(doc_record)
                 if wav_bytes:
                     tmp_wav = save_bytes_to_file(wav_bytes)
-                    raw_transcript = transcribe_openai(tmp_wav,"en-US") if backend_choice.startswith("OpenAI") and openai_client else transcribe_google(tmp_wav,"en-US")
-                    translated = ai_translate(raw_transcript,"English",target_lang_name)[1] if openai_client else google_translate(raw_transcript,src="en",dest=LANG_CODES.get(target_lang_name))
+
+                    # Transcription
+                    if backend_choice.startswith("OpenAI") and openai_client:
+                        raw_transcript = transcribe_openai(tmp_wav, "en-US")
+                    else:
+                        raw_transcript = transcribe_google(tmp_wav, "en-US")
+
+                    # Translation
+                    cleaned, translated = ai_translate(raw_transcript, "English", target_lang_name) \
+                        if openai_client else (raw_transcript, google_translate(raw_transcript, src="en", dest=LANG_CODES.get(target_lang_name)))
+
+                    # TTS
                     tts_path = generate_tts(translated, LANG_CODES.get(target_lang_name))
-                    st.session_state.conv.append({"role":"Doctor","original":raw_transcript,"cleaned":raw_transcript,"translated":translated,"tts":tts_path,"ts":time.time()})
+
+                    # Save to conversation
+                    st.session_state.conv.append({
+                        "role": "Doctor",
+                        "original": raw_transcript,
+                        "cleaned": cleaned,
+                        "translated": translated,
+                        "tts": tts_path,
+                        "ts": time.time()
+                    })
+
+                    # Display
                     st.info(raw_transcript)
                     st.success(translated)
+
                     try: os.remove(tmp_wav)
                     except: pass
 
