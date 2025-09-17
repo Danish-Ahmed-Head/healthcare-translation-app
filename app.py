@@ -18,6 +18,11 @@ import time
 from pathlib import Path
 from pydub import AudioSegment
 
+import whisper
+model = whisper.load_model("small")
+result = model.transcribe(tmp_wav, language=LANG_CODES.get(input_lang_name, "ur"))
+raw_transcript = result["text"]
+
 
 # Third-party imports that might be optional
 try:
@@ -97,7 +102,11 @@ def save_bytes_to_file(b: bytes, suffix: str = ".wav") -> str:
         try:
             sound = AudioSegment.from_file(tmp.name)
             pcm_path = tmp.name.replace(".wav", "_pcm.wav")
+            sound = AudioSegment.from_file(tmp.name)
+            sound = sound.set_channels(1).set_frame_rate(16000)
+            pcm_path = tmp.name.replace(".wav", "_pcm.wav")
             sound.export(pcm_path, format="wav", codec="pcm_s16le")
+
             return pcm_path
         except Exception as e:
             st.warning(f"Audio conversion failed: {e}")
@@ -290,7 +299,7 @@ with col_b:
 # Map names to language codes (used by various services)
 LANG_CODES = {"Urdu": "ur", "English": "en", "Hindi": "hi", "Arabic": "ar"}
 # Google speech uses en-US, ur-PK etc — build reasonable defaults:
-STT_LANG_CODES = {"Urdu": "ur-PK", "English": "en-US", "Hindi": "hi-IN", "Arabic": "ar-SA"}
+STT_LANG_CODES = {"Urdu": "ur", "English": "en-US", "Hindi": "hi-IN", "Arabic": "ar-SA"}
 
 st.markdown("## Live Translation Console")
 st.caption("Record short phrases; each recording becomes a conversation turn. Use the Speak buttons to replay translated audio.")
@@ -334,6 +343,8 @@ with left:
                 local_dir.mkdir(exist_ok=True)
                 idx = int(time.time())
                 Path(local_dir / f"{idx}_raw.txt").write_text(raw_transcript or "")
+                st.write(f"Audio length: {len(wav_bytes)} bytes")
+
             # AI postprocess (clean + translate) if possible
             cleaned, ai_translation = ai_postprocess_and_translate(raw_transcript or "", source_lang_name=input_lang_name, target_lang_name=target_lang_name)
             # If AI didn't produce a translation (no OpenAI), fallback to googletrans
@@ -450,6 +461,8 @@ with right:
                     if sr is not None:
                         try:
                             raw_transcript = transcribe_with_google_speech(tmp_wav, language=STT_LANG_CODES.get("English", "en-US"))
+                            st.info(f"Using Google STT with language code: {STT_LANG_CODES.get(input_lang_name, 'en-US')}")
+
                         except Exception as e:
                             st.error(f"Transcription failed: {e}")
                             raw_transcript = ""
