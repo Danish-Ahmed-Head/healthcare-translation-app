@@ -19,6 +19,86 @@ from pathlib import Path
 from pydub import AudioSegment
 
 
+# =========================
+# VOSK OFFLINE STT (optional)
+# =========================
+try:
+    import vosk
+except ImportError:
+    vosk = None
+
+def transcribe_with_vosk(file_path: str, language="en") -> str:
+    """Offline STT using Vosk."""
+    if vosk is None:
+        raise RuntimeError("Vosk not installed")
+    import wave, json
+    wf = wave.open(file_path, "rb")
+    if wf.getnchannels() != 1 or wf.getsampwidth() != 2:
+        raise RuntimeError("Vosk requires mono PCM WAV")
+    model = vosk.Model("model")  # place Vosk model folder here
+    rec = vosk.KaldiRecognizer(model, wf.getframerate())
+    result_text = ""
+    while True:
+        data = wf.readframes(4000)
+        if len(data) == 0:
+            break
+        if rec.AcceptWaveform(data):
+            result_text += json.loads(rec.Result()).get("text", "") + " "
+    result_text += json.loads(rec.FinalResult()).get("text", "")
+    return result_text.strip()
+
+def cleanup_session_audio():
+    for msg in st.session_state.conv:
+        tts_path = msg.get("tts")
+        if tts_path and Path(tts_path).exists():
+            try:
+                os.remove(tts_path)
+            except Exception:
+                pass
+
+
+# =========================
+# TEMP FILE CLEANUP (add this)
+# =========================
+import glob
+
+def cleanup_temp_files(tmp_dir=tempfile.gettempdir(), pattern="*"):
+    """Delete old PCM WAV or MP3 files in temp directory."""
+    for f in glob.glob(os.path.join(tmp_dir, "*_pcm.wav")):
+        try:
+            os.remove(f)
+        except Exception:
+            pass
+    for f in glob.glob(os.path.join(tmp_dir, "*.mp3")):
+        try:
+            os.remove(f)
+        except Exception:
+            pass
+
+# Call at start
+cleanup_temp_files()
+
+import json, re
+def parse_gpt_output(output_text: str):
+    """Parse GPT JSON-like output safely."""
+    cleaned, translation = "", ""
+    try:
+        # Replace single quotes with double quotes for JSON
+        json_like = re.sub(r"(\w+):", r'"\1":', output_text)
+        json_like = json_like.replace("'", '"')
+        data = json.loads(json_like)
+        cleaned = data.get("CLEANED", "").strip()
+        translation = data.get("TRANSLATION", "").strip()
+    except Exception:
+        if "CLEANED:" in output_text and "TRANSLATION:" in output_text:
+            try:
+                cleaned = output_text.split("CLEANED:")[1].split("TRANSLATION:")[0].strip()
+                translation = output_text.split("TRANSLATION:")[1].strip()
+            except:
+                translation = output_text
+        else:
+            translation = output_text
+    return cleaned or "", translation or ""
 # Third-party imports that might be optional
 try:
     from streamlit_mic_recorder import mic_recorder
@@ -97,17 +177,16 @@ def save_bytes_to_file(b: bytes, suffix: str = ".wav") -> str:
         try:
             sound = AudioSegment.from_file(tmp.name)
             pcm_path = tmp.name.replace(".wav", "_pcm.wav")
-            sound = AudioSegment.from_file(tmp.name)
-            sound = sound.set_channels(1).set_frame_rate(16000)
-            pcm_path = tmp.name.replace(".wav", "_pcm.wav")
             sound.export(pcm_path, format="wav", codec="pcm_s16le")
-
+            st.audio(pcm_path)
+            st.write("DEBUG: pcm_path exists?", Path(pcm_path).exists())
             return pcm_path
         except Exception as e:
             st.warning(f"Audio conversion failed: {e}")
             return tmp.name
 
     return tmp.name
+
 
 
 def extract_wav_bytes(record_value):
@@ -218,24 +297,10 @@ def ai_postprocess_and_translate(raw_text: str, source_lang_name: str, target_la
                 temperature=0.0
             )
             out = resp.choices[0].message.content.strip()
-            # The model may return plain text; try to heuristically split CLEANED and TRANSLATION
-            cleaned = ""
-            translation = ""
-            if "CLEANED:" in out and "TRANSLATION:" in out:
-                try:
-                    cleaned_part = out.split("CLEANED:")[1].split("TRANSLATION:")[0].strip()
-                    trans_part = out.split("TRANSLATION:")[1].strip()
-                    cleaned = cleaned_part
-                    translation = trans_part
-                except Exception:
-                    translation = out
-            else:
-                # fallback: treat output as translation
-                translation = out
+            cleaned, translation = parse_gpt_output(out)   # <-- REPLACE OLD PARSING HERE
             return cleaned or raw_text, translation or raw_text
         except Exception as e:
             st.warning(f"OpenAI postprocessing failed: {e}")
-            # fallback to raw_text and empty translation (will use googletrans later)
             return raw_text, ""
     else:
         # No OpenAI: do a light cleanup and return raw_text
@@ -250,19 +315,17 @@ def translate_with_google(text: str, src="auto", dest="en") -> str:
     except Exception:
         return ""
 
-# -------------------------
-# TTS helper
-# -------------------------
-def tts_save_mp3(text: str, lang_code: str = "en") -> str:
-    """Return path to generated mp3 file using gTTS."""
+from io import BytesIO
+
+def tts_to_bytes(text: str, lang_code: str = "en") -> BytesIO:
+    """Generate TTS audio as in-memory BytesIO object."""
     if gTTS is None:
         raise RuntimeError("gTTS not installed")
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-    try:
-        gTTS(text=text, lang=lang_code).save(tmp.name)
-        return tmp.name
-    except Exception as e:
-        raise
+    mp3_fp = BytesIO()
+    gTTS(text=text, lang=lang_code).write_to_fp(mp3_fp)
+    mp3_fp.seek(0)
+    return mp3_fp
+
 
 def read_file_bytes(path: str) -> bytes:
     with open(path, "rb") as f:
@@ -294,7 +357,7 @@ with col_b:
 # Map names to language codes (used by various services)
 LANG_CODES = {"Urdu": "ur", "English": "en", "Hindi": "hi", "Arabic": "ar"}
 # Google speech uses en-US, ur-PK etc — build reasonable defaults:
-STT_LANG_CODES = {"Urdu": "ur", "English": "en-US", "Hindi": "hi-IN", "Arabic": "ar-SA"}
+STT_LANG_CODES = {"Urdu": "ur-PK", "English": "en-US", "Hindi": "hi-IN", "Arabic": "ar-SA"}
 
 st.markdown("## Live Translation Console")
 st.caption("Record short phrases; each recording becomes a conversation turn. Use the Speak buttons to replay translated audio.")
@@ -320,12 +383,15 @@ with left:
                 except Exception as e:
                     st.warning(f"OpenAI transcription failed: {e}. Falling back to Google STT if available.")
                     raw_transcript = ""
+                    st.write("DEBUG: patient_record =", patient_record)
+                    st.write("DEBUG: wav_bytes length =", len(wav_bytes) if wav_bytes else "None")
+
             # Fallback: Google STT via speech_recognition
             if not raw_transcript:
                 if sr is not None:
                     try:
                         st.info("Transcribing (Google Web Speech)...")
-                        raw_transcript = transcribe_with_google_speech(tmp_wav, language=STT_LANG_CODES.get(input_lang_name, "en-US"))
+                        raw_transcript = transcribe_with_google_speech(tmp_wav, language="ur")
                     except Exception as e:
                         st.error(f"Transcription failed: {e}")
                         raw_transcript = ""
@@ -338,8 +404,6 @@ with left:
                 local_dir.mkdir(exist_ok=True)
                 idx = int(time.time())
                 Path(local_dir / f"{idx}_raw.txt").write_text(raw_transcript or "")
-                st.write(f"Audio length: {len(wav_bytes)} bytes")
-
             # AI postprocess (clean + translate) if possible
             cleaned, ai_translation = ai_postprocess_and_translate(raw_transcript or "", source_lang_name=input_lang_name, target_lang_name=target_lang_name)
             # If AI didn't produce a translation (no OpenAI), fallback to googletrans
@@ -357,12 +421,16 @@ with left:
             try:
                 tts_lang = LANG_CODES.get(target_lang_name, "en")
                 if gTTS is not None and ai_translation:
-                    tts_path = tts_save_mp3(ai_translation, lang_code=tts_lang)
+                    # Instead of tts_path = tts_save_mp3(...)
+                    tts_bytesio = tts_to_bytes(ai_translation, lang_code=LANG_CODES.get(target_lang_name, "en"))
+                    st.audio(tts_bytesio, format="audio/mp3")
+
                 else:
                     tts_path = None
             except Exception as e:
                 st.warning(f"TTS failed: {e}")
                 tts_path = None
+            
             # Append to conversation history
             st.session_state.conv.append({
                 "role": "Patient",
@@ -377,11 +445,9 @@ with left:
             st.info(raw_transcript or "—")
             st.markdown("**Clinician view (translated / cleaned):**")
             st.success(ai_translation or "—")
-            # cleanup temp wav
-            try:
-                os.remove(tmp_wav)
-            except Exception:
-                pass
+            cleanup_session_audio()
+
+            
         else:
             st.warning("Could not parse recorded audio; update streamlit_mic_recorder if problem persists.")
 
@@ -423,7 +489,10 @@ with right:
                 tts_path = None
                 try:
                     if gTTS is not None:
-                        tts_path = tts_save_mp3(translated, lang_code=LANG_CODES.get(target_lang_name, "ur"))
+                        # Instead of tts_path = tts_save_mp3(...)
+                        tts_bytesio = tts_to_bytes(ai_translation, lang_code=LANG_CODES.get(target_lang_name, "en"))
+                        st.audio(tts_bytesio, format="audio/mp3")
+
                 except Exception as e:
                     st.warning(f"TTS failed: {e}")
                     tts_path = None
@@ -436,6 +505,8 @@ with right:
                     "ts": time.time()
                 })
                 st.success("Added to conversation.")
+                cleanup_session_audio()
+
     else:
         # record doctor speech
         doc_record = mic_recorder(key="doctor_rec")
@@ -456,8 +527,6 @@ with right:
                     if sr is not None:
                         try:
                             raw_transcript = transcribe_with_google_speech(tmp_wav, language=STT_LANG_CODES.get("English", "en-US"))
-                            st.info(f"Using Google STT with language code: {STT_LANG_CODES.get(input_lang_name, 'en-US')}")
-
                         except Exception as e:
                             st.error(f"Transcription failed: {e}")
                             raw_transcript = ""
@@ -489,7 +558,10 @@ with right:
                 tts_path = None
                 try:
                     if gTTS is not None and translated:
-                        tts_path = tts_save_mp3(translated, lang_code=LANG_CODES.get(target_lang_name, "ur"))
+                        # Instead of tts_path = tts_save_mp3(...)
+                        tts_bytesio = tts_to_bytes(ai_translation, lang_code=LANG_CODES.get(target_lang_name, "en"))
+                        st.audio(tts_bytesio, format="audio/mp3")
+
                 except Exception as e:
                     st.warning(f"TTS failed: {e}")
                 st.session_state.conv.append({
@@ -504,10 +576,9 @@ with right:
                 st.info(raw_transcript or "")
                 st.markdown("**Translated for patient:**")
                 st.success(translated or "")
-                try:
-                    os.remove(tmp_wav)
-                except Exception:
-                    pass
+                cleanup_session_audio()
+
+                
             else:
                 st.warning("Could not parse recorded audio; update mic recorder or check browser support.")
 
