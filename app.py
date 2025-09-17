@@ -266,16 +266,15 @@ def translate_with_google(text: str, src="auto", dest="en") -> str:
 # -------------------------
 # TTS helper
 # -------------------------
-def tts_save_mp3(text: str, lang_code: str = "en") -> str:
-    """Return path to generated mp3 file using gTTS."""
-    if gTTS is None:
-        raise RuntimeError("gTTS not installed")
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-    try:
-        gTTS(text=text, lang=lang_code).save(tmp.name)
-        return tmp.name
-    except Exception as e:
-        raise
+def safe_tts(text, lang):
+    for i in range(3):
+        try:
+            return tts_save_mp3(text, lang_code=lang)
+        except Exception as e:
+            time.sleep(1)
+    st.warning("TTS failed after 3 attempts.")
+    return None
+
 
 def read_file_bytes(path: str) -> bytes:
     with open(path, "rb") as f:
