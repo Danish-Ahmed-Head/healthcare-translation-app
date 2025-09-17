@@ -18,6 +18,28 @@ import time
 from pathlib import Path
 from pydub import AudioSegment
 
+import os
+import streamlit as st
+
+OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY") if "OPENAI_API_KEY" in st.secrets else os.getenv("OPENAI_API_KEY")
+openai_client = None
+if OPENAI_API_KEY:
+    try:
+        from openai import OpenAI
+        openai_client = OpenAI(api_key=OPENAI_API_KEY)
+    except Exception as e:
+        st.warning(f"OpenAI client init failed: {e}")
+        openai_client = None
+
+
+# Feed to OpenAI transcription
+raw_transcript = transcribe_with_openai(pcm_bytesio, language="ur")
+
+import pydub
+import ffmpeg_static
+
+# Make pydub use ffmpeg from ffmpeg-static
+pydub.AudioSegment.converter = ffmpeg_static.get_ffmpeg_binary()
 
 # =========================
 # VOSK OFFLINE STT (optional)
@@ -217,6 +239,16 @@ def extract_wav_bytes(record_value):
     if isinstance(record_value, (bytes, bytearray)):
         return bytes(record_value)
     return None
+from io import BytesIO
+
+# Convert to AudioSegment in memory
+wav_bytesio = BytesIO(wav_bytes)
+audio_segment = AudioSegment.from_file(wav_bytesio)
+
+# Export PCM WAV to temp file for transcription
+pcm_path = tmp_wav.replace(".wav", "_pcm.wav")
+audio_segment.export(pcm_path, format="wav", codec="pcm_s16le")
+tmp_wav = pcm_path  # overwrite tmp_wav for later use
 
 # -------------------------
 # Transcription functions
@@ -317,10 +349,11 @@ def translate_with_google(text: str, src="auto", dest="en") -> str:
 
 from io import BytesIO
 
+from io import BytesIO
+from gtts import gTTS
+
 def tts_to_bytes(text: str, lang_code: str = "en") -> BytesIO:
     """Generate TTS audio as in-memory BytesIO object."""
-    if gTTS is None:
-        raise RuntimeError("gTTS not installed")
     mp3_fp = BytesIO()
     gTTS(text=text, lang=lang_code).write_to_fp(mp3_fp)
     mp3_fp.seek(0)
@@ -429,8 +462,9 @@ with left:
             tts_path = None
             try:
                 if gTTS is not None and ai_translation:
-                    tts_bytesio = tts_to_bytes(ai_translation, lang_code=LANG_CODES.get(target_lang_name, "en"))
+                    tts_bytesio = tts_to_bytes(translated, lang_code=LANG_CODES.get(target_lang_name, "en"))
                     st.audio(tts_bytesio, format="audio/mp3")
+
             except Exception as e:
                 st.warning(f"TTS failed: {e}")
 
@@ -496,6 +530,8 @@ with right:
                         # Instead of tts_path = tts_save_mp3(...)
                         tts_bytesio = tts_to_bytes(translated, lang_code=LANG_CODES.get(target_lang_name, "en"))
                         st.audio(tts_bytesio, format="audio/mp3")
+
+
 
                 except Exception as e:
                     st.warning(f"TTS failed: {e}")
@@ -575,6 +611,8 @@ with right:
                     if gTTS is not None and translated:
                         tts_bytesio = tts_to_bytes(translated, lang_code=LANG_CODES.get(target_lang_name, "en"))
                         st.audio(tts_bytesio, format="audio/mp3")
+
+
                 except Exception as e:
                     st.warning(f"TTS failed: {e}")
 
