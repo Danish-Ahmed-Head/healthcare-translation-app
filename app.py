@@ -18,11 +18,6 @@ import time
 from pathlib import Path
 from pydub import AudioSegment
 
-import whisper
-model = whisper.load_model("small")
-result = model.transcribe(tmp_wav, language=LANG_CODES.get(input_lang_name, "ur"))
-raw_transcript = result["text"]
-
 
 # Third-party imports that might be optional
 try:
