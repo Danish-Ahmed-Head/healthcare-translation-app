@@ -372,6 +372,9 @@ with left:
     if patient_record:
         st.success("Recorded — processing...")
         wav_bytes = extract_wav_bytes(patient_record)
+        st.write("DEBUG: patient_record =", patient_record)
+        st.write("DEBUG: wav_bytes length =", len(wav_bytes) if wav_bytes else "None")
+
         if wav_bytes:
             tmp_wav = save_bytes_to_file(wav_bytes, suffix=".wav")
             raw_transcript = ""
@@ -391,7 +394,7 @@ with left:
                 if sr is not None:
                     try:
                         st.info("Transcribing (Google Web Speech)...")
-                        raw_transcript = transcribe_with_google_speech(tmp_wav, language="ur")
+                        raw_transcript = transcribe_with_google_speech(tmp_wav, language="ur-PK")
                     except Exception as e:
                         st.error(f"Transcription failed: {e}")
                         raw_transcript = ""
@@ -516,11 +519,15 @@ with right:
             wav_bytes = extract_wav_bytes(doc_record)
             if wav_bytes:
                 tmp_wav = save_bytes_to_file(wav_bytes, suffix=".wav")
+                st.write("DEBUG: tmp_wav exists?", Path(tmp_wav).exists())
+
                 # transcribe via OpenAI or Google
                 raw_transcript = ""
                 if backend_choice.startswith("OpenAI") and openai_client:
                     try:
                         raw_transcript = transcribe_with_openai(tmp_wav, language=STT_LANG_CODES.get("English", "en-US"))
+                        st.write("DEBUG: OpenAI client =", openai_client)
+
                     except Exception as e:
                         st.warning(f"OpenAI transcription failed: {e}")
                         raw_transcript = ""
