@@ -187,6 +187,10 @@ def transcribe_with_google_speech(file_path: str, language="en-US") -> str:
     except Exception as e:
         raise
 
+    if not ai_translation and google_translator:
+        ai_translation = translate_with_google(cleaned or raw_transcript, src=LANG_CODES.get(input_lang_name), dest=LANG_CODES.get(target_lang_name))
+
+
 # -------------------------
 # AI postprocessing & translation
 # -------------------------
@@ -524,6 +528,10 @@ with right:
 # -------------------------
 st.markdown("---")
 st.header("Conversation History")
+with st.expander("Conversation History"):
+    for msg in reversed(st.session_state.conv):
+        st.write(...)
+
 if not st.session_state.conv:
     st.info("No conversation turns yet. Record a short phrase to start.")
 else:
@@ -555,6 +563,11 @@ else:
 # -------------------------
 # Footer / tips
 # -------------------------
+
+agree_privacy = st.sidebar.checkbox("I confirm this audio does NOT contain real patient data", value=True)
+if not agree_privacy:
+    st.stop()
+
 st.caption("Tip: For best results provide an OpenAI API key in Streamlit secrets or set OPENAI_API_KEY in your environment. "
            "This enables AI-enhanced transcription and translation (Whisper + GPT). "
            "If you don't have it, the app will use Google Web Speech + googletrans as fallback.")
