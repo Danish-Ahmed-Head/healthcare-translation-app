@@ -1,11 +1,10 @@
-streamlit>=1.25
+streamlit
 streamlit-mic-recorder
 gtts
 pydub
+googletrans==4.0.0-rc1
 SpeechRecognition
 httpx==0.13.3
 openai
 vosk
 ffmpeg-python
-ffmpeg-static
-deep-translator
