@@ -12,3 +12,4 @@ openai
 pipwin
 # Optional offline STT
 vosk
+openai-whisper
