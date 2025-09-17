@@ -1,18 +1,16 @@
-streamlit>=1.25 
-streamlit-mic-recorder 
-gtts 
+streamlit
+streamlit-mic-recorder
+gtts
+pydub
+googletrans==4.0.0-rc1
+SpeechRecognition
+httpx==0.13.3
+# Optional (only if you plan to use OpenAI Whisper / GPT)
+openai
+# Optional helper for Windows PyAudio install
+pipwin
+# Optional offline STT
+vosk
 ffmpeg-python 
 pydub 
-googletrans==4.0.0-rc1 
-SpeechRecognition 
-httpx==0.13.3 
-openai 
-PyAudio  
-pipwin
-STT 
-vosk 
-openai-whisper 
-pipwin 
-pydub 
 ffmpeg-static 
-ffmpeg-python
