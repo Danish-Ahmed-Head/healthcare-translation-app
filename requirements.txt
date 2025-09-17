@@ -1,6 +1,7 @@
-streamlit
+streamlit>=1.25
 streamlit-mic-recorder
 gtts
+ffmpeg-python
 pydub
 googletrans==4.0.0-rc1
 SpeechRecognition
