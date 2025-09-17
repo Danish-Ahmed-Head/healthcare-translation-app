@@ -405,31 +405,32 @@ with left:
                 idx = int(time.time())
                 Path(local_dir / f"{idx}_raw.txt").write_text(raw_transcript or "")
             # AI postprocess (clean + translate) if possible
-            cleaned, ai_translation = ai_postprocess_and_translate(raw_transcript or "", source_lang_name=input_lang_name, target_lang_name=target_lang_name)
-            # If AI didn't produce a translation (no OpenAI), fallback to googletrans
-            if not ai_translation:
-                # translate raw/clean to target using googletrans if present
-                if google_translator:
-                    try:
-                        ai_translation = translate_with_google(cleaned or raw_transcript or "", src=LANG_CODES.get(input_lang_name, "auto"), dest=LANG_CODES.get(target_lang_name, "en"))
-                    except Exception:
-                        ai_translation = ""
-                else:
-                    ai_translation = cleaned or raw_transcript or ""
-            # TTS generation: use target lang code
+            # -------------------------
+            # AI postprocess (clean + translate)
+            # -------------------------
+            cleaned, ai_translation = ai_postprocess_and_translate(
+                raw_transcript or "", 
+                source_lang_name=input_lang_name, 
+                target_lang_name=target_lang_name
+            )
+
+            # Fallback: Google Translate if AI translation is empty
+            if not ai_translation and google_translator:
+                ai_translation = translate_with_google(
+                    cleaned or raw_transcript or "",
+                    src=LANG_CODES.get(input_lang_name, "auto"),
+                    dest=LANG_CODES.get(target_lang_name, "en")
+                )
+
+            # TTS
             tts_path = None
             try:
-                tts_lang = LANG_CODES.get(target_lang_name, "en")
                 if gTTS is not None and ai_translation:
-                    # Instead of tts_path = tts_save_mp3(...)
                     tts_bytesio = tts_to_bytes(ai_translation, lang_code=LANG_CODES.get(target_lang_name, "en"))
                     st.audio(tts_bytesio, format="audio/mp3")
-
-                else:
-                    tts_path = None
             except Exception as e:
                 st.warning(f"TTS failed: {e}")
-                tts_path = None
+
             
             # Append to conversation history
             st.session_state.conv.append({
@@ -490,7 +491,7 @@ with right:
                 try:
                     if gTTS is not None:
                         # Instead of tts_path = tts_save_mp3(...)
-                        tts_bytesio = tts_to_bytes(ai_translation, lang_code=LANG_CODES.get(target_lang_name, "en"))
+                        tts_bytesio = tts_to_bytes(translated, lang_code=LANG_CODES.get(target_lang_name, "en"))
                         st.audio(tts_bytesio, format="audio/mp3")
 
                 except Exception as e:
@@ -534,6 +535,7 @@ with right:
                         st.error("No STT backend available.")
                         raw_transcript = ""
                 # translate to patient language
+                # Translate to patient language
                 translated = ""
                 if openai_client and backend_choice.startswith("OpenAI"):
                     try:
@@ -541,29 +543,34 @@ with right:
                             {"role": "system", "content": "You are a clinical translator."},
                             {"role": "user", "content": f"Translate this to {target_lang_name}: {raw_transcript}"}
                         ]
-                        resp = openai_client.chat.completions.create(model="gpt-4o-mini", messages=msgs, max_tokens=200, temperature=0.0)
+                        resp = openai_client.chat.completions.create(
+                            model="gpt-4o-mini", 
+                            messages=msgs, 
+                            max_tokens=200, 
+                            temperature=0.0
+                        )
                         translated = resp.choices[0].message.content.strip()
                     except Exception as e:
                         st.warning(f"OpenAI translate failed: {e}")
                         translated = ""
-                if not translated:
-                    if google_translator:
-                        try:
-                            translated = translate_with_google(raw_transcript, src="en", dest=LANG_CODES.get(target_lang_name, "ur"))
-                        except Exception:
-                            translated = raw_transcript
-                    else:
-                        translated = raw_transcript
+
+                # Fallback: Google Translate if translation is empty
+                if not translated and google_translator:
+                    translated = translate_with_google(
+                        raw_transcript,
+                        src="en",
+                        dest=LANG_CODES.get(target_lang_name, "ur")
+                    )
+
                 # TTS
                 tts_path = None
                 try:
                     if gTTS is not None and translated:
-                        # Instead of tts_path = tts_save_mp3(...)
-                        tts_bytesio = tts_to_bytes(ai_translation, lang_code=LANG_CODES.get(target_lang_name, "en"))
+                        tts_bytesio = tts_to_bytes(translated, lang_code=LANG_CODES.get(target_lang_name, "en"))
                         st.audio(tts_bytesio, format="audio/mp3")
-
                 except Exception as e:
                     st.warning(f"TTS failed: {e}")
+
                 st.session_state.conv.append({
                     "role": "Doctor",
                     "original": raw_transcript,
