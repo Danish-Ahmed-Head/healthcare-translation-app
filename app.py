@@ -273,7 +273,7 @@ def translate_with_google(text: str, src="auto", dest="en") -> str:
 def safe_tts(text, lang):
     for i in range(3):
         try:
-            return save_tts(text, lang_code=lang)
+            return safe_tts(text, lang_code=lang)
         except Exception as e:
             time.sleep(1)
     st.warning("TTS failed after 3 attempts.")
