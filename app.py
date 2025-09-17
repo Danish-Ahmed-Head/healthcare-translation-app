@@ -134,6 +134,9 @@ def transcribe_google(file_path: str, lang="en-US") -> str:
     except Exception as e:
         log_error(f"Google STT error: {e}")
         return ""
+# After transcription
+if not raw_transcript:
+    log_error(f"Transcription failed for {input_lang_name} input. Check API key, mic, or dependencies.")
 
 # -------------------- Translation / AI --------------------
 def ai_translate(raw_text, src_lang_name, target_lang_name="English"):
@@ -164,6 +167,9 @@ def ai_translate(raw_text, src_lang_name, target_lang_name="English"):
     else:
         cleaned = raw_text.replace(" um "," ").replace(" uh "," ").strip()
         return cleaned, ""
+# After translation
+if not translated:
+    log_error(f"Translation failed from {input_lang_name} to {target_lang_name}. Check OpenAI / Google API or internet connection.")
 
 def google_translate(text, src="auto", dest="en"):
     if not google_translator:
@@ -186,6 +192,9 @@ def generate_tts(text, lang="en"):
     except Exception as e:
         log_error(f"TTS generation failed: {e}")
         return None
+# After TTS
+if not tts_path:
+    log_error(f"TTS generation failed for {target_lang_name}. Check gTTS installation or text content.")
 
 # -------------------- Session State --------------------
 if "conv" not in st.session_state:
@@ -204,6 +213,17 @@ store_locally = st.sidebar.checkbox("Store transcripts locally")
 agree_privacy = st.sidebar.checkbox("Audio contains no real patient data", value=True)
 if not agree_privacy:
     st.stop()
+st.sidebar.header("Errors / Warnings")
+if st.session_state.errors:
+    for err in st.session_state.errors:
+        st.sidebar.error(err)
+st.sidebar.markdown("### Session Info")
+st.sidebar.write(f"OpenAI configured: {bool(openai_client)}")
+st.sidebar.write(f"speech_recognition installed: {bool(sr)}")
+st.sidebar.write(f"gTTS installed: {bool(gTTS)}")
+st.sidebar.write(f"Google Translator installed: {bool(google_translator)}")
+st.sidebar.write(f"Mic recorder available: {bool(mic_recorder)}")
+
 
 # -------------------- Language Selectors --------------------
 col_a,col_b = st.columns(2)
